@@ -187,7 +187,7 @@ export default function CreateProblemPage() {
               name="reward"
               value={form.reward}
               onChange={handleChange}
-              placeholder="₹10,000 / Internship / Certificate"
+              placeholder="MNC Internship"
             />
 
             {/* Deadline */}

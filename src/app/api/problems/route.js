@@ -109,7 +109,7 @@ export async function GET(req) {
     values.push(limit, offset);
 
     const dataRes = await query(baseQuery, values);
-    const countRes = await query(countQuery, values.slice(0, i - 1));
+    const countRes = await query(countQuery);
 
     return NextResponse.json({
       success: true,
