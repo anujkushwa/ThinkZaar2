@@ -64,3 +64,71 @@ Return ONLY valid JSON:
     return null;
   }
 }
+
+export async function evaluateSolutionAgainstProblem({
+  problemTitle,
+  problemDescription,
+  problemConstraints,
+  problemExpectedOutcomes,
+  problemRequirements,
+  solutionText,
+}) {
+  if (!process.env.GROQ_API_KEY) return null;
+
+  const prompt = `
+You are an expert evaluator for a crowd-powered problem solving platform.
+
+Evaluate the submitted solution against the problem requirements and expected outcomes.
+
+Return ONLY valid JSON with this exact shape:
+{
+  "scores": {
+    "feasibility": number,
+    "creativity": number,
+    "effectiveness": number
+  },
+  "summary": string,
+  "strengths": string[],
+  "risks": string[],
+  "suggestions": string[]
+}
+
+Scoring guidance:
+- feasibility: practical to build + realistic assumptions
+- creativity: novelty and insight
+- effectiveness: how well it meets requirements/outcomes/constraints
+
+Problem Title:
+${problemTitle}
+
+Problem Description:
+${problemDescription}
+
+Requirements:
+${problemRequirements || ""}
+
+Constraints:
+${problemConstraints || ""}
+
+Expected Outcomes:
+${problemExpectedOutcomes || ""}
+
+Solution:
+${solutionText}
+`;
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama3-8b-8192",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.4,
+    });
+
+    const text = completion.choices?.[0]?.message?.content || "";
+    const cleanText = text.replace(/```json|```/g, "").trim();
+    return JSON.parse(cleanText);
+  } catch (e) {
+    console.error("Groq evaluate error:", e);
+    return null;
+  }
+}

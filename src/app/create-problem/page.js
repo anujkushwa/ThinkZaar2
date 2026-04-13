@@ -12,10 +12,13 @@ export default function CreateProblemPage() {
     description: "",
     requirements: "",
     deadline: "",
+    constraints: "",
+    expectedOutcomes: "",
   });
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
 
   const categories = [
     "Technology",
@@ -39,11 +42,32 @@ export default function CreateProblemPage() {
     e.preventDefault();
     setLoading(true);
     setSuccess(false);
+    setError("");
 
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const res = await fetch("/api/problems", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title,
+          description: form.description,
+          category: form.category,
+          difficulty: (form.difficulty || "Easy").toLowerCase(),
+          reward: form.reward,
+          deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
+          constraints: form.constraints || null,
+          expected_outcomes: form.expectedOutcomes || null,
+          requirements: form.requirements || null,
+          tags: [],
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.message || "Failed to create problem");
+      }
+
       setSuccess(true);
-
       setForm({
         title: "",
         category: "",
@@ -53,8 +77,14 @@ export default function CreateProblemPage() {
         description: "",
         requirements: "",
         deadline: "",
+        constraints: "",
+        expectedOutcomes: "",
       });
-    }, 1500);
+    } catch (err) {
+      setError(err?.message || "Failed to create problem");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -67,7 +97,7 @@ export default function CreateProblemPage() {
           </p>
 
           <h1 className="mt-4 text-4xl font-bold md:text-5xl">
-            Create New Problem
+            Post Problem
           </h1>
 
           <p className="mt-3 max-w-3xl text-slate-400">
@@ -80,6 +110,12 @@ export default function CreateProblemPage() {
         {success && (
           <div className="mt-6 rounded-2xl border border-green-500/30 bg-green-500/10 p-4 text-green-400">
             Problem created successfully 🚀
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">
+            {error}
           </div>
         )}
 
@@ -194,6 +230,36 @@ export default function CreateProblemPage() {
               placeholder="Mention skills, expectations, deliverables..."
               className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
             />
+          </div>
+
+          <div className="mt-6 grid gap-6 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">
+                Constraints
+              </label>
+              <textarea
+                rows="4"
+                name="constraints"
+                value={form.constraints}
+                onChange={handleChange}
+                placeholder="Budget, time, hardware limits, policies..."
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">
+                Expected outcomes
+              </label>
+              <textarea
+                rows="4"
+                name="expectedOutcomes"
+                value={form.expectedOutcomes}
+                onChange={handleChange}
+                placeholder="What a good solution should deliver..."
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+              />
+            </div>
           </div>
 
           {/* Buttons */}

@@ -2,6 +2,10 @@ import { createServer } from "http";
 import next from "next";
 import { initSocket } from "./src/lib/socket.js";
 
+// Windows + OneDrive often breaks Turbopack junctions (os error 5).
+// Force Webpack dev server for reliability.
+process.env.NEXT_DISABLE_TURBOPACK ??= "1";
+
 const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });
 const handle = app.getRequestHandler();

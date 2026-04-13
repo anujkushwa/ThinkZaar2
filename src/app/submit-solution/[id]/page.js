@@ -8,15 +8,14 @@ export default function SubmitSolutionPage({ params }) {
   const { id } = params;
 
   const [form, setForm] = useState({
-    title: "",
-    summary: "",
-    tech: "",
-    github: "",
-    demo: "",
+    content: "",
+    fileUrl: "",
+    externalLink: "",
   });
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
 
   const handleChange = (e) => {
     setForm((prev) => ({
@@ -30,19 +29,34 @@ export default function SubmitSolutionPage({ params }) {
 
     setLoading(true);
     setSuccess(false);
+    setError("");
 
-    setTimeout(() => {
-      setLoading(false);
-      setSuccess(true);
+    (async () => {
+      try {
+        const res = await fetch("/api/solutions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            problemId: id,
+            content: form.content,
+            fileUrl: form.fileUrl || null,
+            externalLink: form.externalLink || null,
+          }),
+        });
 
-      setForm({
-        title: "",
-        summary: "",
-        tech: "",
-        github: "",
-        demo: "",
-      });
-    }, 1500);
+        const data = await res.json();
+        if (!res.ok || data?.success === false) {
+          throw new Error(data?.message || "Failed to submit solution");
+        }
+
+        setSuccess(true);
+        setForm({ content: "", fileUrl: "", externalLink: "" });
+      } catch (err) {
+        setError(err?.message || "Failed to submit solution");
+      } finally {
+        setLoading(false);
+      }
+    })();
   };
 
   return (
@@ -70,59 +84,45 @@ export default function SubmitSolutionPage({ params }) {
           </div>
         )}
 
+        {error && (
+          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">
+            {error}
+          </div>
+        )}
+
         {/* Form */}
         <form
           onSubmit={handleSubmit}
           className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6 md:p-8"
         >
-          <div className="grid gap-6 md:grid-cols-2">
-            <Field
-              label="Solution Title"
-              name="title"
-              value={form.title}
-              onChange={handleChange}
-              placeholder="Enter solution title"
-            />
-
-            <Field
-              label="Technology Stack"
-              name="tech"
-              value={form.tech}
-              onChange={handleChange}
-              placeholder="React, Node.js, AI, Python..."
-            />
-          </div>
-
           <div className="mt-6">
-            <label className="mb-2 block text-sm text-slate-300">
-              Summary
-            </label>
+            <label className="mb-2 block text-sm text-slate-300">Solution</label>
 
             <textarea
               rows="6"
-              name="summary"
-              value={form.summary}
+              name="content"
+              value={form.content}
               onChange={handleChange}
-              placeholder="Explain your solution..."
+              placeholder="Explain your solution in detail (approach, feasibility, impact, timeline)..."
               className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-400"
             />
           </div>
 
           <div className="mt-6 grid gap-6 md:grid-cols-2">
             <Field
-              label="GitHub Link"
-              name="github"
-              value={form.github}
+              label="File URL (optional)"
+              name="fileUrl"
+              value={form.fileUrl}
               onChange={handleChange}
-              placeholder="https://github.com/..."
+              placeholder="https://drive.google.com/..."
             />
 
             <Field
-              label="Live Demo Link"
-              name="demo"
-              value={form.demo}
+              label="External Link (optional)"
+              name="externalLink"
+              value={form.externalLink}
               onChange={handleChange}
-              placeholder="https://demo.com"
+              placeholder="https://github.com/... or https://demo.com"
             />
           </div>
 

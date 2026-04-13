@@ -1,14 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-const isPublicRoute = createRouteMatcher([
-  "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/problems(.*)",
-  "/problem(.*)",
-]);
-
+// 🔐 Protected routes
 const isProtectedRoute = createRouteMatcher([
   "/dashboard(.*)",
   "/profile(.*)",
@@ -17,39 +10,38 @@ const isProtectedRoute = createRouteMatcher([
   "/my-solutions(.*)",
   "/create-problem(.*)",
   "/notifications(.*)",
-  "/leaderboard(.*)",
-  "/submit-solution(.*)",
-  "/onboarding(.*)",
-  "/api(.*)",
+  "/problems(.*)",
+  "/problem(.*)",
 ]);
 
-const isAdminRoute = createRouteMatcher(["/admin(.*)", "/api/admin(.*)"]);
-const isMentorRoute = createRouteMatcher(["/mentor(.*)"]);
+// 👑 Admin routes
+const isAdminRoute = createRouteMatcher([
+  "/admin(.*)",
+]);
 
-function getRole(sessionClaims) {
-  return (
-    sessionClaims?.publicMetadata?.role ??
-    sessionClaims?.public_metadata?.role ??
-    "solver"
-  );
-}
+// 🎓 Mentor routes
+const isMentorRoute = createRouteMatcher([
+  "/mentor(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth();
 
-  if (isPublicRoute(req)) return NextResponse.next();
-
+  // 🔒 Not logged in → redirect to sign-in
   if (isProtectedRoute(req) && !userId) {
     return NextResponse.redirect(new URL("/sign-in", req.url));
   }
 
-  const role = getRole(sessionClaims);
+  // 🧠 Get role safely
+  const role = sessionClaims?.publicMetadata?.role || "user";
 
+  // 👑 Admin protection
   if (isAdminRoute(req) && role !== "admin") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  if (isMentorRoute(req) && role !== "mentor" && role !== "admin") {
+  // 🎓 Mentor protection
+  if (isMentorRoute(req) && role !== "mentor") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
@@ -62,4 +54,3 @@ export const config = {
     "/(api|trpc)(.*)",
   ],
 };
-

@@ -1,62 +1,58 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useUser } from "@clerk/nextjs";
+import { io } from "socket.io-client";
 
 export default function MyProblemsPage() {
+  const { user } = useUser();
+  const userId = user?.id;
+
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
+  const [problems, setProblems] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const problems = [
-    {
-      id: 1,
-      title: "Traffic Congestion in Smart Cities",
-      category: "Transport",
-      status: "Open",
-      reward: "₹25,000",
-      applicants: 42,
-      createdAt: "12 Apr 2026",
-      deadline: "30 Apr 2026",
-      description:
-        "Need scalable smart traffic optimization solution using AI + sensors.",
-    },
-    {
-      id: 2,
-      title: "Affordable AI Education Platform",
-      category: "Education",
-      status: "In Review",
-      reward: "Internship + ₹10,000",
-      applicants: 31,
-      createdAt: "10 Apr 2026",
-      deadline: "28 Apr 2026",
-      description:
-        "Build low-cost adaptive learning platform for tier-2 students.",
-    },
-    {
-      id: 3,
-      title: "Rural Healthcare Access Problem",
-      category: "Healthcare",
-      status: "Closed",
-      reward: "₹50,000",
-      applicants: 67,
-      createdAt: "05 Apr 2026",
-      deadline: "20 Apr 2026",
-      description:
-        "Find telemedicine and medicine distribution model for villages.",
-    },
-    {
-      id: 4,
-      title: "Waste Management Automation",
-      category: "Environment",
-      status: "Open",
-      reward: "₹18,000",
-      applicants: 22,
-      createdAt: "14 Apr 2026",
-      deadline: "05 May 2026",
-      description:
-        "Smart segregation and route optimization system for waste pickup.",
-    },
-  ];
+  useEffect(() => {
+    if (!userId) return;
 
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/problems/my");
+        const data = await res.json();
+        if (!cancelled) setProblems(data.data || []);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setProblems([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // 🔥 REALTIME SOCKET
+  useEffect(() => {
+    const socket = io("http://localhost:3000");
+
+    socket.on("problemCreated", (newProblem) => {
+      setProblems((prev) => [newProblem, ...prev]);
+    });
+
+    socket.on("problemDeleted", (id) => {
+      setProblems((prev) => prev.filter((p) => p.id !== id));
+    });
+
+    return () => socket.disconnect();
+  }, []);
+
+  // 🔍 FILTER
   const filteredProblems = useMemo(() => {
     return problems.filter((item) => {
       const matchSearch =
@@ -68,157 +64,134 @@ export default function MyProblemsPage() {
 
       return matchSearch && matchFilter;
     });
-  }, [search, filter]);
+  }, [search, filter, problems]);
+
+  // 🗑 DELETE
+  const handleDelete = async (id) => {
+    await fetch(`/api/problems/${id}`, {
+      method: "DELETE",
+    });
+
+    setProblems((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  // 📊 STATS
+  const total = problems.length;
+  const open = problems.filter((p) => p.status === "open").length;
+  const closed = problems.filter((p) => p.status === "closed").length;
+  const applicants = problems.reduce(
+    (sum, p) => sum + (p.applicants || 0),
+    0
+  );
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-10 text-white">
       <div className="mx-auto max-w-7xl">
-        {/* Header */}
-        <section className="rounded-3xl border border-slate-800 bg-slate-900 p-8 md:p-10">
-          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+
+        {/* HEADER */}
+        <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800">
+          <div className="flex justify-between items-center">
             <div>
-              <p className="text-sm uppercase tracking-[0.35em] text-cyan-400">
-                ThinkZaar Workspace
-              </p>
-
-              <h1 className="mt-3 text-4xl font-bold md:text-5xl">
-                My Problems
-              </h1>
-
-              <p className="mt-3 max-w-3xl text-slate-400">
-                Manage all challenges you created, monitor submissions, and
-                track progress in one place.
+              <h1 className="text-4xl font-bold">My Problems</h1>
+              <p className="text-slate-400 mt-2">
+                Manage your posts like a creator 🚀
               </p>
             </div>
-
-            <button className="rounded-2xl bg-cyan-500 px-6 py-4 font-semibold text-slate-950 hover:bg-cyan-400">
-              + Create New Problem
-            </button>
           </div>
         </section>
 
-        {/* Stats */}
-        <section className="mt-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard title="Total Problems" value="12" />
-          <StatCard title="Open Challenges" value="7" />
-          <StatCard title="Total Applicants" value="162" />
-          <StatCard title="Completed" value="3" />
+        {/* STATS */}
+        <section className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-6">
+          <StatCard title="Total" value={total} />
+          <StatCard title="Open" value={open} />
+          <StatCard title="Closed" value={closed} />
+          <StatCard title="Applicants" value={applicants} />
         </section>
 
-        {/* Search + Filter */}
-        <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900 p-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <input
-              type="text"
-              placeholder="Search problems..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-400"
-            />
+        {/* FILTER */}
+        <section className="mt-8 bg-slate-900 p-6 rounded-2xl border border-slate-800 grid md:grid-cols-3 gap-4">
+          <input
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="bg-slate-950 p-3 rounded-xl"
+          />
 
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-cyan-400"
-            >
-              <option>All</option>
-              <option>Open</option>
-              <option>In Review</option>
-              <option>Closed</option>
-            </select>
-
-            <button className="rounded-2xl border border-slate-700 px-4 py-3 hover:border-cyan-400 hover:text-cyan-300">
-              Export Data
-            </button>
-          </div>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="bg-slate-950 p-3 rounded-xl"
+          >
+            <option>All</option>
+            <option>open</option>
+            <option>in_review</option>
+            <option>closed</option>
+          </select>
         </section>
 
-        {/* Problems Grid */}
+        {/* LOADING */}
+        {loading && (
+          <p className="text-center mt-10 text-slate-400">Loading...</p>
+        )}
+
+        {/* LIST */}
         <section className="mt-8 grid gap-6 lg:grid-cols-2">
           {filteredProblems.map((problem) => (
-            <ProblemCard key={problem.id} problem={problem} />
+            <ProblemCard
+              key={problem.id}
+              problem={problem}
+              onDelete={handleDelete}
+            />
           ))}
         </section>
 
-        {/* Empty State */}
-        {filteredProblems.length === 0 && (
-          <div className="mt-10 rounded-3xl border border-slate-800 bg-slate-900 p-10 text-center">
-            <h3 className="text-2xl font-bold">No Problems Found</h3>
-            <p className="mt-3 text-slate-400">
-              Try different search or filter options.
-            </p>
-          </div>
-        )}
       </div>
     </main>
   );
 }
 
+// 🔥 STAT
 function StatCard({ title, value }) {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6">
-      <p className="text-sm uppercase tracking-wide text-slate-400">{title}</p>
-      <h3 className="mt-3 text-4xl font-bold text-cyan-400">{value}</h3>
+    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+      <p className="text-slate-400">{title}</p>
+      <h3 className="text-3xl font-bold text-cyan-400 mt-2">
+        {value}
+      </h3>
     </div>
   );
 }
 
-function ProblemCard({ problem }) {
-  const badgeStyle = {
-    Open: "bg-green-500/15 text-green-400",
-    "In Review": "bg-yellow-500/15 text-yellow-400",
-    Closed: "bg-red-500/15 text-red-400",
-  };
-
+// 🔥 CARD (SOCIAL STYLE)
+function ProblemCard({ problem, onDelete }) {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 transition hover:border-cyan-400">
-      <div className="flex flex-wrap items-center gap-3">
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            badgeStyle[problem.status]
-          }`}
+    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+
+      <h2 className="text-xl font-bold">{problem.title}</h2>
+      <p className="text-slate-400 mt-2">{problem.description}</p>
+
+      <div className="flex gap-4 mt-4 text-sm text-slate-400">
+        <span>💰 {problem.reward}</span>
+        <span>👥 {problem.applicants || 0}</span>
+      </div>
+
+      <div className="flex gap-3 mt-5">
+        <button className="bg-cyan-500 px-4 py-2 rounded-xl text-slate-950">
+          View
+        </button>
+
+        <button className="border px-4 py-2 rounded-xl">
+          Edit
+        </button>
+
+        <button
+          onClick={() => onDelete(problem.id)}
+          className="border border-red-500 text-red-400 px-4 py-2 rounded-xl"
         >
-          {problem.status}
-        </span>
-
-        <span className="rounded-full bg-cyan-500/15 px-3 py-1 text-xs text-cyan-300">
-          {problem.category}
-        </span>
-      </div>
-
-      <h2 className="mt-4 text-2xl font-bold">{problem.title}</h2>
-
-      <p className="mt-3 text-slate-400">{problem.description}</p>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <Mini label="Reward" value={problem.reward} />
-        <Mini label="Applicants" value={problem.applicants} />
-        <Mini label="Created" value={problem.createdAt} />
-        <Mini label="Deadline" value={problem.deadline} />
-      </div>
-
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <button className="rounded-2xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 hover:bg-cyan-400">
-          View Submissions
-        </button>
-
-        <button className="rounded-2xl border border-slate-700 px-5 py-3 hover:border-cyan-400 hover:text-cyan-300">
-          Edit Problem
-        </button>
-
-        <button className="rounded-2xl border border-red-500/40 px-5 py-3 text-red-400 hover:bg-red-500/10">
           Delete
         </button>
       </div>
-    </div>
-  );
-}
 
-function Mini({ label, value }) {
-  return (
-    <div className="rounded-2xl bg-slate-950 p-4">
-      <p className="text-sm text-slate-400">{label}</p>
-      <h4 className="mt-1 font-semibold text-cyan-400">{value}</h4>
     </div>
   );
 }

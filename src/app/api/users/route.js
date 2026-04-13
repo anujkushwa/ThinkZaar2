@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser } from "@clerk/nextjs/server";
+import { clerkClient, currentUser } from "@clerk/nextjs/server";
 import { query } from "@/lib/db";
 
 // ✅ GET: Current Logged-in User (REAL)
@@ -46,6 +46,23 @@ export async function POST() {
       );
     }
 
+    // 🔥 If role was provided at sign-up, sync it to publicMetadata + DB.
+    const desiredRole =
+      user?.publicMetadata?.role ??
+      user?.unsafeMetadata?.role ??
+      user?.unsafe_metadata?.role ??
+      null;
+
+    if (desiredRole && !user?.publicMetadata?.role) {
+      try {
+        await clerkClient.users.updateUserMetadata(user.id, {
+          publicMetadata: { role: desiredRole },
+        });
+      } catch (e) {
+        console.error("Failed to sync Clerk role metadata", e);
+      }
+    }
+
     // 🔥 Check if user already exists
     const existing = await query(
       `SELECT * FROM users WHERE clerk_id = $1`,
@@ -53,6 +70,12 @@ export async function POST() {
     );
 
     if (existing.rows.length > 0) {
+      if (desiredRole && existing.rows[0]?.role !== desiredRole) {
+        await query(`UPDATE users SET role = $1 WHERE clerk_id = $2`, [
+          desiredRole,
+          user.id,
+        ]);
+      }
       return NextResponse.json({
         success: true,
         message: "User already exists",
@@ -61,7 +84,10 @@ export async function POST() {
     }
 
     // 🎯 Default Role
-    const role = "solver";
+    const role =
+      desiredRole === "admin" || desiredRole === "mentor" || desiredRole === "solver"
+        ? desiredRole
+        : "solver";
 
     // 🔥 Create new user
     const newUser = await query(

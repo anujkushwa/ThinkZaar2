@@ -21,5 +21,5 @@ export default function useRealtimePoints(setPoints, userId) {
     return () => {
       socket.disconnect();
     };
-  }, [userId]);
+  }, [userId, setPoints]);
 }

@@ -1,64 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function LeaderboardPage() {
-  const [leaders] = useState([
-    {
-      rank: 1,
-      name: "Anuj Kushwaha",
-      role: "Innovator",
-      points: 9850,
-      badge: "🏆 Legend",
-      solutions: 48,
-      votes: 2410,
-    },
-    {
-      rank: 2,
-      name: "Priya Sharma",
-      role: "Mentor",
-      points: 9120,
-      badge: "🥈 Elite",
-      solutions: 39,
-      votes: 1980,
-    },
-    {
-      rank: 3,
-      name: "Rahul Verma",
-      role: "Student",
-      points: 8740,
-      badge: "🥉 Rising Star",
-      solutions: 35,
-      votes: 1760,
-    },
-    {
-      rank: 4,
-      name: "Neha Singh",
-      role: "Innovator",
-      points: 8210,
-      badge: "🚀 Pro",
-      solutions: 31,
-      votes: 1655,
-    },
-    {
-      rank: 5,
-      name: "Amit Yadav",
-      role: "Mentor",
-      points: 7900,
-      badge: "🔥 Expert",
-      solutions: 29,
-      votes: 1512,
-    },
-    {
-      rank: 6,
-      name: "Vikas Patel",
-      role: "Student",
-      points: 7540,
-      badge: "⭐ Active",
-      solutions: 25,
-      votes: 1398,
-    },
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [leaders, setLeaders] = useState([]);
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await fetch("/api/leaderboard");
+        const data = await res.json();
+        if (!cancelled) setLeaders(data?.data ?? []);
+      } catch (e) {
+        if (!cancelled) setError("Failed to load leaderboard");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const ranked = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const base = Array.isArray(leaders) ? leaders : [];
+    const filtered = q
+      ? base.filter((u) => (u.name || "").toLowerCase().includes(q))
+      : base;
+    return filtered.map((u, idx) => ({
+      ...u,
+      rank: idx + 1,
+      badge: idx === 0 ? "🏆 Legend" : idx === 1 ? "🥈 Elite" : idx === 2 ? "🥉 Rising Star" : "⭐ Active",
+    }));
+  }, [leaders, search]);
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-10 text-white">
@@ -87,7 +69,7 @@ export default function LeaderboardPage() {
 
         {/* Top 3 Podium */}
         <section className="mt-10 grid gap-6 lg:grid-cols-3">
-          {leaders.slice(0, 3).map((user) => (
+          {ranked.slice(0, 3).map((user) => (
             <div
               key={user.rank}
               className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center transition hover:border-cyan-400"
@@ -97,7 +79,7 @@ export default function LeaderboardPage() {
               </div>
 
               <h2 className="mt-5 text-2xl font-bold">{user.name}</h2>
-              <p className="mt-1 text-cyan-400">{user.role}</p>
+              <p className="mt-1 text-cyan-400">{user.role || "solver"}</p>
 
               <p className="mt-3 text-lg">{user.badge}</p>
 
@@ -108,8 +90,8 @@ export default function LeaderboardPage() {
               <p className="text-slate-400">Points</p>
 
               <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
-                <MiniCard label="Solutions" value={user.solutions} />
-                <MiniCard label="Votes" value={user.votes} />
+                <MiniCard label="Solutions" value={user.solutions || 0} />
+                <MiniCard label="Votes" value={user.votes || 0} />
               </div>
             </div>
           ))}
@@ -123,9 +105,23 @@ export default function LeaderboardPage() {
             <input
               type="text"
               placeholder="Search users..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
               className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
             />
           </div>
+
+          {loading && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-slate-400">
+              Loading leaderboard...
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-red-300">
+              {error}
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-left">
@@ -143,7 +139,7 @@ export default function LeaderboardPage() {
               </thead>
 
               <tbody>
-                {leaders.map((user) => (
+                {ranked.map((user) => (
                   <tr
                     key={user.rank}
                     className="border-b border-slate-800 transition hover:bg-slate-800/40"
@@ -154,13 +150,13 @@ export default function LeaderboardPage() {
 
                     <td className="py-5 font-semibold">{user.name}</td>
 
-                    <td className="py-5 text-slate-300">{user.role}</td>
+                    <td className="py-5 text-slate-300">{user.role || "solver"}</td>
 
                     <td className="py-5">{user.badge}</td>
 
-                    <td className="py-5">{user.solutions}</td>
+                    <td className="py-5">{user.solutions || 0}</td>
 
-                    <td className="py-5">{user.votes}</td>
+                    <td className="py-5">{user.votes || 0}</td>
 
                     <td className="py-5 font-bold text-cyan-400">
                       {user.points}
