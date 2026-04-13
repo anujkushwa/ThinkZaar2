@@ -1,22 +1,14 @@
-export const fakeDB = {
-  users: [],
-  problems: [],
-  solutions: [],
-  votes: [],
-};
+import { Pool } from "pg";
 
-export function addRecord(table, data) {
-  fakeDB[table].push({
-    id: Date.now(),
-    createdAt: new Date(),
-    ...data,
-  });
-}
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
+});
 
-export function getRecords(table) {
-  return fakeDB[table];
-}
-
-export function deleteRecord(table, id) {
-  fakeDB[table] = fakeDB[table].filter((item) => item.id !== id);
+// helper query function
+export async function query(text, params) {
+  const res = await pool.query(text, params);
+  return res;
 }

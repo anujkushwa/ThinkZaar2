@@ -1,119 +1,115 @@
-// src/app/api/vote/route.js
-
 import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
+import { currentUser } from "@clerk/nextjs/server";
+import { addPoints } from "@/lib/gamification";
 
-export async function GET() {
-  try {
-    const votes = [
-      {
-        id: 1,
-        userId: 1,
-        solutionId: 1,
-        type: "upvote",
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        userId: 2,
-        solutionId: 1,
-        type: "upvote",
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: 3,
-        userId: 3,
-        solutionId: 2,
-        type: "upvote",
-        createdAt: new Date().toISOString(),
-      },
-    ];
-
-    return NextResponse.json({
-      success: true,
-      total: votes.length,
-      data: votes,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to fetch votes.",
-      },
-      { status: 500 }
-    );
-  }
-}
-
+// ✅ VOTE (UPVOTE / DOWNVOTE / TOGGLE)
 export async function POST(req) {
   try {
-    const body = await req.json();
+    const user = await currentUser();
 
-    const {
-      userId,
-      solutionId,
-      type = "upvote",
-    } = body;
-
-    if (!userId || !solutionId) {
+    if (!user) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "userId and solutionId are required.",
-        },
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+    const { solutionId, value } = body;
+
+    if (!solutionId || ![1, -1].includes(value)) {
+      return NextResponse.json(
+        { success: false, message: "Invalid vote" },
         { status: 400 }
       );
     }
 
-    const vote = {
-      id: Date.now(),
-      userId,
-      solutionId,
-      type,
-      createdAt: new Date().toISOString(),
-    };
-
-    return NextResponse.json({
-      success: true,
-      message: "Vote submitted successfully.",
-      data: vote,
-    });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to submit vote.",
-      },
-      { status: 500 }
+    // 🔥 Get DB user (voter)
+    const userRes = await query(
+      `SELECT * FROM users WHERE clerk_id = $1`,
+      [user.id]
     );
-  }
-}
 
-export async function DELETE(req) {
-  try {
-    const body = await req.json();
+    const dbUser = userRes.rows[0];
 
-    const { voteId } = body;
+    // 🔥 Get solution owner
+    const solutionRes = await query(
+      `SELECT * FROM solutions WHERE id = $1`,
+      [solutionId]
+    );
 
-    if (!voteId) {
+    const solution = solutionRes.rows[0];
+
+    if (!solution) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "voteId is required.",
-        },
-        { status: 400 }
+        { success: false, message: "Solution not found" },
+        { status: 404 }
       );
+    }
+
+    const ownerId = solution.user_id;
+
+    // 🔥 Check existing vote
+    const existing = await query(
+      `SELECT * FROM votes WHERE user_id = $1 AND solution_id = $2`,
+      [dbUser.id, solutionId]
+    );
+
+    // 🔁 Case 1: Same vote → remove
+    if (existing.rows.length > 0) {
+      const prevVote = existing.rows[0];
+
+      if (prevVote.value === value) {
+        await query(
+          `DELETE FROM votes WHERE user_id = $1 AND solution_id = $2`,
+          [dbUser.id, solutionId]
+        );
+
+        return NextResponse.json({
+          success: true,
+          message: "Vote removed",
+        });
+      }
+
+      // 🔁 Case 2: Opposite vote → update
+      await query(
+        `UPDATE votes SET value = $1 WHERE user_id = $2 AND solution_id = $3`,
+        [value, dbUser.id, solutionId]
+      );
+
+      // 🎯 POINTS LOGIC
+      if (value === 1) {
+        await addPoints(ownerId, 2, "upvote_received");
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Vote updated",
+      });
+    }
+
+    // ✅ Case 3: New vote
+    await query(
+      `INSERT INTO votes (user_id, solution_id, value)
+       VALUES ($1, $2, $3)`,
+      [dbUser.id, solutionId, value]
+    );
+
+    // 🎯 POINTS LOGIC (ONLY for upvote)
+    if (value === 1) {
+      await addPoints(ownerId, 2, "upvote_received");
     }
 
     return NextResponse.json({
       success: true,
-      message: `Vote ${voteId} removed successfully.`,
+      message: "Vote added",
     });
   } catch (error) {
+    console.error(error);
+
     return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to remove vote.",
-      },
+      { success: false, message: "Voting failed" },
       { status: 500 }
     );
   }

@@ -1,4 +1,10 @@
+"use client"; // ✅ ADD
+
+import { useRouter } from "next/navigation"; // ✅ ADD
+
 export default function HomePage() {
+  const router = useRouter(); // ✅ ADD
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       {/* Hero Section */}
@@ -20,11 +26,17 @@ export default function HomePage() {
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <button className="rounded-xl bg-cyan-500 px-6 py-3 font-medium text-slate-950 transition hover:bg-cyan-400">
+            <button
+              onClick={() => router.push("/sign-in")} // ✅ ADD
+              className="rounded-xl bg-cyan-500 px-6 py-3 font-medium text-slate-950 transition hover:bg-cyan-400"
+            >
               Get Started
             </button>
 
-            <button className="rounded-xl border border-slate-700 px-6 py-3 font-medium transition hover:border-cyan-400 hover:text-cyan-300">
+            <button
+              onClick={() => router.push("/sign-in")} // ✅ ADD
+              className="rounded-xl border border-slate-700 px-6 py-3 font-medium transition hover:border-cyan-400 hover:text-cyan-300"
+            >
               Explore Ideas
             </button>
           </div>

@@ -1,97 +1,121 @@
-// src/app/api/solutions/route.js
-
 import { NextResponse } from "next/server";
+import { query } from "@/lib/db";
+import { currentUser } from "@clerk/nextjs/server";
+import { addPoints } from "@/lib/gamification";
 
-export async function GET() {
+// ✅ GET solutions by problem_id
+export async function GET(req) {
   try {
-    const solutions = [
-      {
-        id: 1,
-        title: "AI Traffic Control System",
-        problemId: 1,
-        author: "Anuj Kushwaha",
-        status: "Approved",
-        votes: 128,
-        tech: "React, Node.js, AI",
-      },
-      {
-        id: 2,
-        title: "Smart Learning Platform",
-        problemId: 2,
-        author: "Priya Sharma",
-        status: "Pending",
-        votes: 74,
-        tech: "Next.js, Python",
-      },
-      {
-        id: 3,
-        title: "Village Telemedicine App",
-        problemId: 3,
-        author: "Rahul Verma",
-        status: "Rejected",
-        votes: 39,
-        tech: "Flutter, Firebase",
-      },
-    ];
+    const { searchParams } = new URL(req.url);
+    const problemId = searchParams.get("problemId");
+
+    if (!problemId) {
+      return NextResponse.json(
+        { success: false, message: "problemId required" },
+        { status: 400 }
+      );
+    }
+
+    const res = await query(
+      `SELECT s.*, u.name, u.image
+       FROM solutions s
+       JOIN users u ON s.user_id = u.id
+       WHERE s.problem_id = $1
+       ORDER BY s.created_at DESC`,
+      [problemId]
+    );
 
     return NextResponse.json({
       success: true,
-      total: solutions.length,
-      data: solutions,
+      total: res.rows.length,
+      data: res.rows,
     });
   } catch (error) {
+    console.error(error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to fetch solutions.",
-      },
+      { success: false, message: "Failed to fetch solutions" },
       { status: 500 }
     );
   }
 }
 
+// ✅ SUBMIT SOLUTION
 export async function POST(req) {
   try {
-    const body = await req.json();
+    const user = await currentUser();
 
-    const {
-      title,
-      problemId,
-      author,
-      tech,
-    } = body;
-
-    if (!title || !problemId || !author) {
+    if (!user) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Title, problemId and author are required.",
-        },
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+    const { problemId, content, fileUrl, externalLink } = body;
+
+    if (!problemId || !content) {
+      return NextResponse.json(
+        { success: false, message: "Problem & content required" },
         { status: 400 }
       );
     }
 
-    const newSolution = {
-      id: Date.now(),
-      title,
-      problemId,
-      author,
-      tech: tech || "Not Provided",
-      status: "Pending",
-      votes: 0,
-    };
+    // 🔥 Get DB user
+    const userRes = await query(
+      `SELECT * FROM users WHERE clerk_id = $1`,
+      [user.id]
+    );
+
+    const dbUser = userRes.rows[0];
+
+    if (!dbUser) {
+      return NextResponse.json(
+        { success: false, message: "User not found in DB" },
+        { status: 404 }
+      );
+    }
+
+    // 🔥 Check existing solution for versioning
+    const existing = await query(
+      `SELECT * FROM solutions 
+       WHERE user_id = $1 AND problem_id = $2 
+       ORDER BY version DESC LIMIT 1`,
+      [dbUser.id, problemId]
+    );
+
+    let version = 1;
+
+    if (existing.rows.length > 0) {
+      version = existing.rows[0].version + 1;
+    }
+
+    // 🔥 Insert solution
+    await addPoints(dbUser.id, 10, "solution_submitted");
+    const res = await query(
+      `INSERT INTO solutions 
+      (problem_id, user_id, content, file_url, external_link, version)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *`,
+      [
+        problemId,
+        dbUser.id,
+        content,
+        fileUrl || null,
+        externalLink || null,
+        version,
+      ]
+    );
 
     return NextResponse.json({
       success: true,
-      message: "Solution submitted successfully.",
-      data: newSolution,
+      message: "Solution submitted",
+      data: res.rows[0],
     });
   } catch (error) {
+    console.error(error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to submit solution.",
-      },
+      { success: false, message: "Failed to submit solution" },
       { status: 500 }
     );
   }

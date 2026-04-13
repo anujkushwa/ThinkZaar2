@@ -1,88 +1,94 @@
-// src/app/api/users/route.js
-
 import { NextResponse } from "next/server";
+import { currentUser } from "@clerk/nextjs/server";
+import { query } from "@/lib/db";
 
+// ✅ GET: Current Logged-in User (REAL)
 export async function GET() {
   try {
-    const users = [
-      {
-        id: 1,
-        name: "Anuj Kushwaha",
-        email: "anuj@example.com",
-        role: "Innovator",
-        points: 9850,
-        status: "Active",
-      },
-      {
-        id: 2,
-        name: "Priya Sharma",
-        email: "priya@example.com",
-        role: "Mentor",
-        points: 9120,
-        status: "Active",
-      },
-      {
-        id: 3,
-        name: "Rahul Verma",
-        email: "rahul@example.com",
-        role: "Student",
-        points: 8740,
-        status: "Inactive",
-      },
-    ];
+    const user = await currentUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const res = await query(
+      `SELECT * FROM users WHERE clerk_id = $1`,
+      [user.id]
+    );
 
     return NextResponse.json({
       success: true,
-      total: users.length,
-      data: users,
+      data: res.rows[0],
     });
+
   } catch (error) {
+    console.error(error);
+
     return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to fetch users.",
-      },
+      { success: false, message: "Failed to fetch user" },
       { status: 500 }
     );
   }
 }
 
-export async function POST(req) {
+// ✅ POST: Auto Sync Clerk User → DB
+export async function POST() {
   try {
-    const body = await req.json();
+    const user = await currentUser();
 
-    const { name, email, role } = body;
-
-    if (!name || !email || !role) {
+    if (!user) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Name, email and role are required.",
-        },
-        { status: 400 }
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
       );
     }
 
-    const newUser = {
-      id: Date.now(),
-      name,
-      email,
-      role,
-      points: 0,
-      status: "Active",
-    };
+    // 🔥 Check if user already exists
+    const existing = await query(
+      `SELECT * FROM users WHERE clerk_id = $1`,
+      [user.id]
+    );
+
+    if (existing.rows.length > 0) {
+      return NextResponse.json({
+        success: true,
+        message: "User already exists",
+        data: existing.rows[0],
+      });
+    }
+
+    // 🎯 Default Role
+    const role = "solver";
+
+    // 🔥 Create new user
+    const newUser = await query(
+      `INSERT INTO users 
+      (clerk_id, name, email, image, role, points, status)
+      VALUES ($1, $2, $3, $4, $5, 0, 'active')
+      RETURNING *`,
+      [
+        user.id,
+        user.fullName || "User",
+        user.emailAddresses[0]?.emailAddress,
+        user.imageUrl,
+        role,
+      ]
+    );
 
     return NextResponse.json({
       success: true,
-      message: "User created successfully.",
-      data: newUser,
+      message: "User created successfully",
+      data: newUser.rows[0],
     });
+
   } catch (error) {
+    console.error(error);
+
     return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to create user.",
-      },
+      { success: false, message: "Failed to create user" },
       { status: 500 }
     );
   }
